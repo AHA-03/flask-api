@@ -6,13 +6,23 @@ import base64
 import uuid  # ✅ Import UUID for unique booking IDs
 from io import BytesIO
 from flask_cors import CORS
+import json
+import os
 
 app = Flask(__name__)
 CORS(app)
 
-# Firebase Admin SDK
-cred = credentials.Certificate(r"D:\Food dispencer\serviceAccountKey.json")
-firebase_admin.initialize_app(cred)
+# ✅ Load Firebase Credentials from Environment Variable
+firebase_json = os.getenv("FIREBASE_SERVICE_ACCOUNT")
+
+if firebase_json:
+    cred_dict = json.loads(firebase_json)
+    cred = credentials.Certificate(cred_dict)
+    firebase_admin.initialize_app(cred)
+else:
+    raise Exception("FIREBASE_SERVICE_ACCOUNT not found in environment variables")
+
+# ✅ Initialize Firestore
 db = firestore.client()
 
 @app.route('/book_food', methods=['POST'])
@@ -64,4 +74,4 @@ def get_order(booking_id):
     return jsonify({"error": "Order not found"}), 404
 
 if __name__ == '__main__':
-    app.run(debug=True) 
+    app.run(debug=True)
