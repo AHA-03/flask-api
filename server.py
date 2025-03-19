@@ -6,14 +6,12 @@ import base64
 import uuid  # ✅ Import UUID for unique booking IDs
 from io import BytesIO
 from flask_cors import CORS
-import os  # ✅ Required for environment variables
 
 app = Flask(__name__)
 CORS(app)
 
-# ✅ Load Firebase credentials from environment variable for Render deployment
-FIREBASE_CRED_PATH = os.getenv("FIREBASE_CRED", "serviceAccountKey.json")
-cred = credentials.Certificate(FIREBASE_CRED_PATH)
+# Firebase Admin SDK
+cred = credentials.Certificate(r"D:\backend\serviceAccountKey.json")
 firebase_admin.initialize_app(cred)
 db = firestore.client()
 
@@ -66,6 +64,4 @@ def get_order(booking_id):
     return jsonify({"error": "Order not found"}), 404
 
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 5000))  # ✅ Use PORT for Render compatibility
-    app.run(host='0.0.0.0', port=port)
-
+    app.run(debug=True) 
