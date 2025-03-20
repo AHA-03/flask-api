@@ -1,112 +1,67 @@
-import os
-import base64
-import json
+from flask import Flask, request, jsonify
 import firebase_admin
 from firebase_admin import credentials, firestore
-from flask import Flask, request, jsonify
-from flask_cors import CORS
-import pyqrcode
-import razorpay
+import qrcode
+import base64
+import uuid  # ✅ Import UUID for unique booking IDs
 from io import BytesIO
+from flask_cors import CORS
 
 app = Flask(__name__)
 CORS(app)
 
-# Debugging: Print Environment Variable
-firebase_base64 = os.getenv("FIREBASE_CONFIG_BASE64")
+# Firebase Admin SDK
+cred = credentials.Certificate(r"D:\backend\serviceAccountKey.json")
+firebase_admin.initialize_app(cred)
+db = firestore.client()
 
-if not firebase_base64:
-    raise ValueError("❌ ERROR: FIREBASE_CONFIG_BASE64 is not set. Please check your environment variables.")
-
-try:
-    firebase_json = base64.b64decode(firebase_base64).decode()
-    print("✅ Decoded Firebase JSON Successfully!")
-    firebase_config = json.loads(firebase_json)
-
-    # Write Firebase credentials to a temporary JSON file
-    with open("firebase_config.json", "w") as f:
-        json.dump(firebase_config, f)
-
-    # Initialize Firebase Admin SDK
-    cred = credentials.Certificate("firebase_config.json")
-    firebase_admin.initialize_app(cred)
-    db = firestore.client()
-    print("✅ Firebase initialized successfully!")
-
-except Exception as e:
-    raise ValueError(f"❌ Error in Firebase setup: {e}")
-
-# Razorpay Configuration
-razorpay_client = razorpay.Client(auth=(os.getenv("RAZORPAY_KEY"), os.getenv("RAZORPAY_SECRET")))
-
-@app.route("/")
-def home():
-    return jsonify({"message": "Food Dispenser API is running!"})
-
-@app.route("/generate_qr", methods=["POST"])
-def generate_qr():
-    try:
-        data = request.json
-        booking_id = data.get("booking_id")
-
-        if not booking_id:
-            return jsonify({"error": "Missing booking_id"}), 400
-
-        qr = pyqrcode.create(booking_id)
-        buffer = BytesIO()
-        qr.png(buffer, scale=6)
-        buffer.seek(0)
-
-        return buffer.getvalue(), 200, {"Content-Type": "image/png"}
+@app.route('/book_food', methods=['POST'])
+def book_food():
+    data = request.get_json()
     
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    if not data or 'roll_number' not in data or 'phone_number' not in data or 'food_items' not in data:
+        return jsonify({"error": "Missing required fields"}), 400
 
-@app.route("/create_order", methods=["POST"])
-def create_order():
+    roll_number = data['roll_number']
+    phone_number = data['phone_number']
+    food_items = data['food_items']
+
+    if not isinstance(food_items, list):
+        return jsonify({"error": "Invalid food_items format"}), 400
+
     try:
-        data = request.json
-        amount = data.get("amount")
+        food_names = [item['food_item'] for item in food_items]
+    except KeyError:
+        return jsonify({"error": "Invalid food_items format"}), 400
 
-        if not amount:
-            return jsonify({"error": "Amount is required"}), 400
+    # ✅ Generate a unique Booking ID
+    booking_id = str(uuid.uuid4())[:8]  # Shorter unique ID (first 8 chars)
 
-        order = razorpay_client.order.create({
-            "amount": int(amount) * 100,  # Convert to paise
-            "currency": "INR",
-            "payment_capture": 1
-        })
+    # ✅ Store in Firestore with Booking ID
+    order_data = {
+        "booking_id": booking_id,
+        "roll_number": roll_number,
+        "phone_number": phone_number,
+        "food_items": food_items,
+        "status": "pending"  # To track if food is dispensed
+    }
+    db.collection("orders").document(booking_id).set(order_data)
 
-        return jsonify(order)
-    
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    # ✅ Generate QR Code with ONLY Booking ID
+    qr = qrcode.make(booking_id)
+    qr_io = BytesIO()
+    qr.save(qr_io, format="PNG")
+    qr_base64 = base64.b64encode(qr_io.getvalue()).decode('utf-8')
 
-@app.route("/verify_payment", methods=["POST"])
-def verify_payment():
-    try:
-        data = request.json
-        order_id = data.get("order_id")
-        payment_id = data.get("payment_id")
-        signature = data.get("signature")
+    return jsonify({"message": "Booking successful", "qr_code": qr_base64, "booking_id": booking_id})
 
-        if not (order_id and payment_id and signature):
-            return jsonify({"error": "Missing payment details"}), 400
+@app.route('/get_order/<booking_id>', methods=['GET'])
+def get_order(booking_id):
+    # ✅ Fetch order details using Booking ID
+    order_ref = db.collection("orders").document(booking_id).get()
+    if order_ref.exists:
+        return jsonify(order_ref.to_dict()), 200
+    return jsonify({"error": "Order not found"}), 404
 
-        params_dict = {
-            "razorpay_order_id": order_id,
-            "razorpay_payment_id": payment_id,
-            "razorpay_signature": signature
-        }
-
-        try:
-            razorpay_client.utility.verify_payment_signature(params_dict)
-            return jsonify({"message": "Payment verified successfully"}), 200
-        except:
-            return jsonify({"error": "Invalid payment signature"}), 400
-
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-if __name__ == "__main__":
-    app.run(debug=True)
+if __name__ == '__main__':
+    app.run(debug=True) 
