@@ -13,7 +13,7 @@ app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})  # Change "*" to frontend URL if needed
 
 # ✅ Firebase Admin SDK (Update the correct path)
-cred = credentials.Certificate(r"D:/Food Dispencer/servicesAccountKey.json")
+cred = credentials.Certificate(r"D:/Food dispencer/servicesAccountKey.json")
 firebase_admin.initialize_app(cred)
 db = firestore.client()
 
