@@ -1,58 +1,196 @@
 <!DOCTYPE html>
 <html lang="en">
+    <link rel="stylesheet" href="styles.css">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Food Dispenser Booking</title>
-    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+    <title>Food Dispenser</title>
     <script>
-        async function createOrder() {
-            let amount = document.getElementById("amount").value;
-            let response = await fetch("https://your-backend-url.onrender.com/create_order", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ amount: amount })
-            });
-
-            let order = await response.json();
-            let options = {
-                "key": "your_razorpay_key",
-                "amount": order.amount,
-                "currency": "INR",
-                "order_id": order.id,
-                "handler": async function (response) {
-                    let verifyResponse = await fetch("https://your-backend-url.onrender.com/verify_payment", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                            order_id: order.id,
-                            payment_id: response.razorpay_payment_id,
-                            signature: response.razorpay_signature
-                        })
-                    });
-
-                    let verifyData = await verifyResponse.json();
-                    if (verifyResponse.ok) {
-                        document.getElementById("qr_code").src = `https://your-backend-url.onrender.com/generate_qr`;
-                        alert("Payment successful! QR code generated.");
-                    } else {
-                        alert("Payment verification failed.");
-                    }
-                }
+        document.addEventListener("DOMContentLoaded", function () {
+            const menu = {
+                "Monday": ["Kuska", "Curd rice", "Chilli parota"],
+                "Tuesday": ["Tomato rice", "Curd rice", "Chilli parota"],
+                "Wednesday": ["Kuska", "Curd rice", "Chilli parota"],
+                "Thursday": ["Tomato rice", "Curd rice", "Chilli parota"],
+                "Friday": ["Kuska", "Curd rice", "Chilli parota"],
+                "Saturday": ["Tomato rice", "Curd rice", "Chilli parota"]
             };
 
-            let rzp = new Razorpay(options);
-            rzp.open();
-        }
+            const prices = {
+                "Kuska": 30,
+                "Curd rice": 30,
+                "Chilli parota": 50,
+                "Tomato rice": 30
+            };
+
+            function getCurrentDay() {
+                const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+                return days[new Date().getDay()];
+            }
+
+            function updateMenu() {
+                const foodList = document.getElementById("foodList");
+                foodList.innerHTML = "";
+                
+                const today = getCurrentDay();
+                const todaysMenu = menu[today] || [];
+
+                todaysMenu.forEach(food => {
+                    const item = document.createElement("div");
+                    item.innerHTML = `
+                        <input type="checkbox" name="food" value="${food}" data-price="${prices[food]}">
+                        ${food} - ₹${prices[food]} 
+                        <input type="number" class="quantity" value="1" min="1" style="width: 50px;">
+                        <span class="food-weight" id="weight-${food.replace(/\s/g, '_')}"> (300g) </span> 
+                    `;
+                    foodList.appendChild(item);
+                });
+
+                document.querySelectorAll(".quantity").forEach(input => {
+                    input.addEventListener("input", calculateTotal);
+                });
+
+                document.querySelectorAll("input[name='food']").forEach(checkbox => {
+                    checkbox.addEventListener("change", calculateTotal);
+                });
+            }
+
+            function calculateTotal() {
+                let total = 0;
+                let weightDetails = {};
+
+                document.querySelectorAll("input[name='food']:checked").forEach(checkbox => {
+                    const price = parseInt(checkbox.getAttribute("data-price"));
+                    const quantityInput = checkbox.parentElement.querySelector(".quantity");
+                    const quantity = parseInt(quantityInput.value);
+                    const foodName = checkbox.value;
+                    const foodWeight = 300 * quantity;
+
+                    total += price * quantity;
+                    weightDetails[foodName] = foodWeight;
+
+                    document.getElementById(`weight-${foodName.replace(/\s/g, '_')}`).innerText = ` (${foodWeight}g)`;
+                });
+
+                document.getElementById("totalPrice").innerText = `Total: ₹${total}`;
+
+                const weightList = document.getElementById("weightDetails");
+                weightList.innerHTML = "";
+                for (const [food, weight] of Object.entries(weightDetails)) {
+                    const item = document.createElement("p");
+                    item.innerText = `${food}: ${weight}g`;
+                    weightList.appendChild(item);
+                }
+            }
+
+            function bookFood(event) {
+                event.preventDefault();
+                console.log("Booking function triggered!");
+
+                const rollNumber = document.getElementById("rollNumber").value;
+                const phoneNumber = document.getElementById("phoneNumber").value;
+                const selectedItems = [];
+
+                document.querySelectorAll("input[name='food']:checked").forEach(checkbox => {
+                    const foodName = checkbox.value;
+                    const quantityInput = checkbox.parentElement.querySelector(".quantity");
+                    const quantity = parseInt(quantityInput.value);
+                    const price = parseInt(checkbox.getAttribute("data-price"));
+                    const weight = 300 * quantity;
+
+                    selectedItems.push({
+                        food_item: foodName,
+                        quantity: quantity,
+                        price: price * quantity,
+                        weight: weight
+                    });
+                });
+
+                if (!rollNumber || !phoneNumber) {
+                    alert("Please enter Roll Number and Phone Number.");
+                    return;
+                }
+
+                if (selectedItems.length === 0) {
+                    alert("Please select at least one item.");
+                    return;
+                }
+
+                fetch("https://flask-api-hzo9.onrender.com", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        roll_number: rollNumber,
+                        phone_number: phoneNumber,
+                        food_items: selectedItems
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        alert("Error: " + data.error);
+                    } else {
+                        alert("Booking successful!");
+
+                        let qrCodeImage = document.getElementById("qrCode");
+                        qrCodeImage.src = "data:image/png;base64," + data.qr_code;
+                        document.getElementById("qrContainer").style.display = "block";
+                    }
+                })
+                .catch(error => alert("Error booking food: " + error));
+            }
+
+            function downloadQRCode() {
+                const qrCodeImg = document.getElementById("qrCode");
+                if (!qrCodeImg.src || qrCodeImg.src === window.location.href) {
+                    alert("QR Code is not available!");
+                    return;
+                }
+
+                // Create a temporary link element
+                const link = document.createElement("a");
+                link.href = qrCodeImg.src;
+                link.download = "QRCode.png";
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            }
+
+            document.getElementById("bookNow").addEventListener("click", bookFood);
+            document.getElementById("downloadQR").addEventListener("click", downloadQRCode);
+
+            updateMenu();
+        });
     </script>
 </head>
 <body>
-    <h1>Food Dispenser Booking</h1>
-    <label for="amount">Enter Amount (INR):</label>
-    <input type="number" id="amount" required>
-    <button onclick="createOrder()">Pay & Get QR</button>
-    <br><br>
-    <h2>Your QR Code:</h2>
-    <img id="qr_code" src="" alt="QR Code will appear here">
+    <h1>Food Dispenser</h1>
+
+    <form id="bookForm" onsubmit="return false;">
+        <h3>Enter Your Details:</h3>
+        <label for="rollNumber">Roll Number:</label>
+        <input type="text" id="rollNumber" required>
+        <br>
+        <label for="phoneNumber">Phone Number:</label>
+        <input type="text" id="phoneNumber" required>
+        <br>
+
+        <h3>Select Food Items:</h3>
+        <div id="foodList"></div>
+        <h3 id="totalPrice">Total: ₹0</h3>
+
+        <h3>Selected Food Weights:</h3>
+        <div id="weightDetails"></div>
+
+        <button id="bookNow">Book Now</button>
+    </form>
+
+    <div id="qrContainer" style="display:none; margin-top: 20px;">
+        <h3>Your QR Code:</h3>
+        <img id="qrCode" alt="QR Code will appear here" style="width: 200px; height: 200px;">
+        <br>
+        <button id="downloadQR">Download QR Code</button>
+    </div>
 </body>
 </html>
