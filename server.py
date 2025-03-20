@@ -1,24 +1,30 @@
+import os
+import json
+import base64
+import uuid
+from io import BytesIO
+import qrcode
 from flask import Flask, request, jsonify
 import firebase_admin
 from firebase_admin import credentials, firestore
-import qrcode
-import base64
-import uuid  # ✅ Import UUID for unique booking IDs
-from io import BytesIO
 from flask_cors import CORS
 
 app = Flask(__name__)
 CORS(app)
 
-# Firebase Admin SDK
-cred = credentials.Certificate(r"D:\backend\serviceAccountKey.json")
+# ✅ Decode Firebase credentials from environment variable
+firebase_json = base64.b64decode(os.getenv("FIREBASE_CONFIG_BASE64")).decode()
+firebase_config = json.loads(firebase_json)
+
+# ✅ Initialize Firebase
+cred = credentials.Certificate(firebase_config)
 firebase_admin.initialize_app(cred)
 db = firestore.client()
 
 @app.route('/book_food', methods=['POST'])
 def book_food():
     data = request.get_json()
-    
+
     if not data or 'roll_number' not in data or 'phone_number' not in data or 'food_items' not in data:
         return jsonify({"error": "Missing required fields"}), 400
 
@@ -35,19 +41,19 @@ def book_food():
         return jsonify({"error": "Invalid food_items format"}), 400
 
     # ✅ Generate a unique Booking ID
-    booking_id = str(uuid.uuid4())[:8]  # Shorter unique ID (first 8 chars)
+    booking_id = str(uuid.uuid4())[:8]
 
-    # ✅ Store in Firestore with Booking ID
+    # ✅ Store in Firestore
     order_data = {
         "booking_id": booking_id,
         "roll_number": roll_number,
         "phone_number": phone_number,
         "food_items": food_items,
-        "status": "pending"  # To track if food is dispensed
+        "status": "pending"
     }
     db.collection("orders").document(booking_id).set(order_data)
 
-    # ✅ Generate QR Code with ONLY Booking ID
+    # ✅ Generate QR Code with Booking ID
     qr = qrcode.make(booking_id)
     qr_io = BytesIO()
     qr.save(qr_io, format="PNG")
@@ -64,4 +70,4 @@ def get_order(booking_id):
     return jsonify({"error": "Order not found"}), 404
 
 if __name__ == '__main__':
-    app.run(debug=True) 
+    app.run(debug=True)
