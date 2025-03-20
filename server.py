@@ -8,10 +8,12 @@ from io import BytesIO
 from flask_cors import CORS
 
 app = Flask(__name__)
-CORS(app)
 
-# Firebase Admin SDK
-cred = credentials.Certificate(r"FIREBASE_CONFIG_BASE64")
+# ✅ Restrict CORS to your frontend domain (modify as needed)
+CORS(app, resources={r"/*": {"origins": "*"}})  # Change "*" to frontend URL if needed
+
+# ✅ Firebase Admin SDK (Update the correct path)
+cred = credentials.Certificate(r"D:/Food Dispencer/servicesAccountKey.json")
 firebase_admin.initialize_app(cred)
 db = firestore.client()
 
@@ -19,6 +21,7 @@ db = firestore.client()
 def book_food():
     data = request.get_json()
     
+    # ✅ Check if all required fields exist
     if not data or 'roll_number' not in data or 'phone_number' not in data or 'food_items' not in data:
         return jsonify({"error": "Missing required fields"}), 400
 
@@ -26,13 +29,11 @@ def book_food():
     phone_number = data['phone_number']
     food_items = data['food_items']
 
-    if not isinstance(food_items, list):
+    # ✅ Validate `food_items` list
+    if not isinstance(food_items, list) or not all(isinstance(item, dict) and 'food_item' in item for item in food_items):
         return jsonify({"error": "Invalid food_items format"}), 400
 
-    try:
-        food_names = [item['food_item'] for item in food_items]
-    except KeyError:
-        return jsonify({"error": "Invalid food_items format"}), 400
+    food_names = [item['food_item'] for item in food_items]
 
     # ✅ Generate a unique Booking ID
     booking_id = str(uuid.uuid4())[:8]  # Shorter unique ID (first 8 chars)
@@ -42,7 +43,7 @@ def book_food():
         "booking_id": booking_id,
         "roll_number": roll_number,
         "phone_number": phone_number,
-        "food_items": food_items,
+        "food_items": food_names,  # Storing only food names for simplicity
         "status": "pending"  # To track if food is dispensed
     }
     db.collection("orders").document(booking_id).set(order_data)
@@ -64,4 +65,4 @@ def get_order(booking_id):
     return jsonify({"error": "Order not found"}), 404
 
 if __name__ == '__main__':
-    app.run(debug=True) 
+    app.run(debug=True)
