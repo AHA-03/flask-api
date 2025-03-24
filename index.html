@@ -1,168 +1,122 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <link rel="stylesheet" href="styles.css">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Food Dispenser</title>
+    <title>Food Booking</title>
     <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
-    <script>
-        document.addEventListener("DOMContentLoaded", function () {
-            const menu = {
-                "Monday": ["Kuska", "Curd rice", "Chilli parota"],
-                "Tuesday": ["Tomato rice", "Curd rice", "Chilli parota"],
-                "Wednesday": ["Kuska", "Curd rice", "Chilli parota"],
-                "Thursday": ["Tomato rice", "Curd rice", "Chilli parota"],
-                "Friday": ["Kuska", "Curd rice", "Chilli parota"],
-                "Saturday": ["Tomato rice", "Curd rice", "Chilli parota"]
-            };
-
-            const prices = {
-                "Kuska": 1,
-                "Curd rice": 1,
-                "Chilli parota": 1,
-                "Tomato rice": 1
-            };
-
-            function getCurrentDay() {
-                const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-                return days[new Date().getDay()];
-            }
-
-            function updateMenu() {
-                const foodList = document.getElementById("foodList");
-                foodList.innerHTML = "";
-                
-                const today = getCurrentDay();
-                const todaysMenu = menu[today] || [];
-
-                todaysMenu.forEach(food => {
-                    const item = document.createElement("div");
-                    item.innerHTML = `
-                        <input type="checkbox" name="food" value="${food}" data-price="${prices[food]}">
-                        ${food} - ₹${prices[food]} 
-                        <input type="number" class="quantity" value="1" min="1" style="width: 50px;">
-                    `;
-                    foodList.appendChild(item);
-                });
-
-                document.querySelectorAll(".quantity").forEach(input => {
-                    input.addEventListener("input", calculateTotal);
-                });
-
-                document.querySelectorAll("input[name='food']").forEach(checkbox => {
-                    checkbox.addEventListener("change", calculateTotal);
-                });
-            }
-
-            function calculateTotal() {
-                let total = 0;
-
-                document.querySelectorAll("input[name='food']:checked").forEach(checkbox => {
-                    const price = parseInt(checkbox.getAttribute("data-price"));
-                    const quantityInput = checkbox.parentElement.querySelector(".quantity");
-                    const quantity = parseInt(quantityInput.value);
-                    total += price * quantity;
-                });
-
-                document.getElementById("totalPrice").innerText = `Total: ₹${total}`;
-            }
-
-            function initiatePayment() {
-                const rollNumber = document.getElementById("rollNumber").value;
-                const phoneNumber = document.getElementById("phoneNumber").value;
-                
-                if (!rollNumber || !phoneNumber) {
-                    alert("Please enter Roll Number and Phone Number.");
-                    return;
-                }
-
-                const selectedItems = [];
-                document.querySelectorAll("input[name='food']:checked").forEach(checkbox => {
-                    const foodName = checkbox.value;
-                    const quantityInput = checkbox.parentElement.querySelector(".quantity");
-                    const quantity = parseInt(quantityInput.value);
-                    const price = parseInt(checkbox.getAttribute("data-price"));
-
-                    selectedItems.push({
-                        food_item: foodName,
-                        quantity: quantity,
-                        price: price * quantity
-                    });
-                });
-
-                if (selectedItems.length === 0) {
-                    alert("Please select at least one item.");
-                    return;
-                }
-
-                fetch("http://127.0.0.1:5000/create_order", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ amount: selectedItems.reduce((acc, item) => acc + item.price, 0) })
-                })
-                .then(response => response.json())
-                .then(data => {
-                    const options = {
-                        key: "rzp_test_s1OAzqW48Ehigh", 
-                        amount: data.amount * 100,
-                        currency: "INR",
-                        order_id: data.order_id,
-                        handler: function (response) {
-                            verifyPayment(response, rollNumber, phoneNumber, selectedItems);
-                        }
-                    };
-                    const rzp = new Razorpay(options);
-                    rzp.open();
-                })
-                .catch(error => alert("Payment initiation failed: " + error));
-            }
-
-            function verifyPayment(paymentDetails, rollNumber, phoneNumber, selectedItems) {
-                fetch("http://127.0.0.1:5000/verify_payment", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        payment_details: paymentDetails,
-                        roll_number: rollNumber,
-                        phone_number: phoneNumber,
-                        food_items: selectedItems
-                    })
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.error) {
-                        alert("Payment verification failed!");
-                    } else {
-                        alert("Booking successful!");
-                        document.getElementById("qrCode").src = "data:image/png;base64," + data.qr_code;
-                        document.getElementById("qrContainer").style.display = "block";
-                    }
-                })
-                .catch(error => alert("Error verifying payment: " + error));
-            }
-
-            document.getElementById("payNow").addEventListener("click", initiatePayment);
-            updateMenu();
-        });
-    </script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; }
+        .container { max-width: 400px; margin: auto; padding: 20px; }
+        .food-item { display: flex; justify-content: space-between; align-items: center; margin: 10px 0; padding: 10px; border: 1px solid #ccc; border-radius: 5px; }
+        .food-name { flex-grow: 1; text-align: left; }
+        .quantity-control { display: flex; align-items: center; }
+        button { margin: 5px; padding: 5px; }
+        .food-weight { margin-left: 10px; }
+    </style>
 </head>
 <body>
-    <h1>Food Dispenser</h1>
-    <form id="bookForm">
-        <label for="rollNumber">Roll Number:</label>
-        <input type="text" id="rollNumber" required>
-        <br>
-        <label for="phoneNumber">Phone Number:</label>
-        <input type="text" id="phoneNumber" required>
-        <br>
-        <div id="foodList"></div>
-        <h3 id="totalPrice">Total: ₹0</h3>
-        <button type="button" id="payNow">Proceed to Pay</button>
-    </form>
-    <div id="qrContainer" style="display:none;">
-        <h3>Your QR Code:</h3>
-        <img id="qrCode" alt="QR Code">
+    <div class="container">
+        <h3>FOOD DISPENSER!</h3>
+        <h2>Book Your Food</h2>
+        <input type="text" id="Roll_number"  placeholder="Enter Roll Number">
+        <input type="text" id="phone_number" placeholder="Enter Phone Number">
+        
+        <div id="food-list">
+            <div class="food-item" data-weight="200" data-price="30">
+                <span class="food-name">Tomato Rice - ₹30 (200g)</span>
+                <div class="quantity-control">
+                    <button onclick="changeQuantity(this, -1)">-</button>
+                    <span class="quantity">0</span>
+                    <button onclick="changeQuantity(this, 1)">+</button>
+                </div>
+                <p class="food-weight">Total Weight: 0g</p>
+            </div>
+            <div class="food-item" data-weight="200" data-price="30">
+                <span class="food-name">Curd Rice - ₹30 (200g)</span>
+                <div class="quantity-control">
+                    <button onclick="changeQuantity(this, -1)">-</button>
+                    <span class="quantity">0</span>
+                    <button onclick="changeQuantity(this, 1)">+</button>
+                </div>
+                <p class="food-weight">Total Weight: 0g</p>
+            </div>
+        </div>
+        
+        <p id="total-price">Total Price: ₹0</p>
+        
+        <button onclick="payNow()">Book Now</button>
+        <div id="qr-code" style="display: none;">
+            <h3>Your QR Code</h3>
+            <img id="qr-img" src="" alt="QR Code">
+        </div>
     </div>
+
+    <script>
+        function changeQuantity(button, change) {
+            let quantitySpan = button.parentElement.querySelector(".quantity");
+            let quantity = parseInt(quantitySpan.innerText) + change;
+            if (quantity < 0) quantity = 0;
+            quantitySpan.innerText = quantity;
+            updateValues();
+        }
+
+        function updateValues() {
+            let totalPrice = 0;
+            document.querySelectorAll(".food-item").forEach(item => {
+                let quantity = parseInt(item.querySelector(".quantity").innerText);
+                let weightPerItem = parseInt(item.getAttribute("data-weight"));
+                let pricePerItem = parseInt(item.getAttribute("data-price"));
+                let totalWeight = weightPerItem * quantity;
+                totalPrice += pricePerItem * quantity;
+                item.querySelector(".food-weight").innerText = "Total Weight: " + totalWeight + "g";
+            });
+            document.getElementById("total-price").innerText = "Total Price: ₹" + totalPrice;
+        }
+
+        function payNow() {
+            let phone = document.getElementById("phone_number").value;
+            let foodItems = [];
+            let totalPrice = 0;
+            
+            document.querySelectorAll(".food-item").forEach(item => {
+                let quantity = parseInt(item.querySelector(".quantity").innerText);
+                if (quantity > 0) {
+                    let foodName = item.querySelector(".food-name").innerText.split(" - ")[0];
+                    let pricePerItem = parseInt(item.getAttribute("data-price"));
+                    totalPrice += pricePerItem * quantity;
+                    foodItems.push({ food_item: foodName, quantity: quantity });
+                }
+            });
+            
+            if (foodItems.length === 0) {
+                alert("Please select at least one item.");
+                return;
+            }
+            
+            let options = {
+                "key": "rzp_test_grC8eQKnPL68OR",
+                "amount": totalPrice * 100,
+                "currency": "INR",
+                "name": "Food Booking",
+                "description": "Payment for food booking",
+                "handler": function (response) {
+                    $.post("https://flask-api-hzo9.onrender.com", {
+                        phone_number: phone,
+                        food_items: foodItems,
+                        payment_id: response.razorpay_payment_id,
+                        total_price: totalPrice
+                    }, function(data) {
+                        document.getElementById("qr-code").style.display = "block";
+                        document.getElementById("qr-img").src = "data:image/png;base64," + data.qr_code;
+                    });
+                },
+                "prefill": { "contact": phone }
+            };
+            let rzp = new Razorpay(options);
+            rzp.open();
+        }
+    </script>
 </body>
 </html>
