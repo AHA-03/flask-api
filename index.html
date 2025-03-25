@@ -7,21 +7,33 @@
     <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <style>
-        body { font-family: Arial, sans-serif; text-align: center; }
-        .container { max-width: 400px; margin: auto; padding: 20px; }
-        .food-item { display: flex; justify-content: space-between; align-items: center; margin: 10px 0; padding: 10px; border: 1px solid #ccc; border-radius: 5px; }
+        body { font-family: Arial, sans-serif; text-align: center; background: #f5f5f5; }
+        .container { max-width: 400px; margin: 20px auto; padding: 20px; background: white; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        .food-item { display: flex; justify-content: space-between; align-items: center; margin: 10px 0; padding: 10px; border: 1px solid #ddd; border-radius: 5px; }
         .food-name { flex-grow: 1; text-align: left; }
         .quantity-control { display: flex; align-items: center; }
-        button { margin: 5px; padding: 5px; }
-        .food-weight { margin-left: 10px; }
+        button { margin: 5px; padding: 5px 10px; cursor: pointer; }
+        .food-weight { margin-left: 10px; color: #666; }
+        #total-price { font-weight: bold; font-size: 1.2em; margin: 20px 0; }
+        #book-now { background: #4CAF50; color: white; border: none; padding: 10px 20px; border-radius: 5px; }
+        #book-now:disabled { background: #cccccc; }
+        #qr-code { margin-top: 20px; }
+        input { width: 100%; padding: 8px; margin: 5px 0 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .error { color: red; font-size: 0.9em; }
     </style>
 </head>
 <body>
     <div class="container">
         <h3>FOOD DISPENSER!</h3>
         <h2>Book Your Food</h2>
-        <input type="text" id="Roll_number"  placeholder="Enter Roll Number">
-        <input type="text" id="phone_number" placeholder="Enter Phone Number">
+        
+        <label for="Roll_number">Roll Number</label>
+        <input type="text" id="Roll_number" placeholder="Enter Roll Number" required>
+        <span id="roll-error" class="error"></span>
+        
+        <label for="phone_number">Phone Number</label>
+        <input type="text" id="phone_number" placeholder="Enter Phone Number" required>
+        <span id="phone-error" class="error"></span>
         
         <div id="food-list">
             <div class="food-item" data-weight="200" data-price="30">
@@ -46,14 +58,17 @@
         
         <p id="total-price">Total Price: ₹0</p>
         
-        <button onclick="payNow()">Book Now</button>
+        <button id="book-now" onclick="payNow()" disabled>Book Now</button>
+        
         <div id="qr-code" style="display: none;">
-            <h3>Your QR Code</h3>
-            <img id="qr-img" src="" alt="QR Code">
+            <h3>Your Booking QR Code</h3>
+            <img id="qr-img" src="" alt="QR Code" style="width: 200px; height: 200px;">
+            <p>Show this QR code at the dispenser.</p>
         </div>
     </div>
 
     <script>
+        // Update quantities and total price
         function changeQuantity(button, change) {
             let quantitySpan = button.parentElement.querySelector(".quantity");
             let quantity = parseInt(quantitySpan.innerText) + change;
@@ -62,8 +77,11 @@
             updateValues();
         }
 
+        // Update total weight/price and enable/disable "Book Now"
         function updateValues() {
             let totalPrice = 0;
+            let hasItems = false;
+            
             document.querySelectorAll(".food-item").forEach(item => {
                 let quantity = parseInt(item.querySelector(".quantity").innerText);
                 let weightPerItem = parseInt(item.getAttribute("data-weight"));
@@ -71,15 +89,41 @@
                 let totalWeight = weightPerItem * quantity;
                 totalPrice += pricePerItem * quantity;
                 item.querySelector(".food-weight").innerText = "Total Weight: " + totalWeight + "g";
+                if (quantity > 0) hasItems = true;
             });
+            
             document.getElementById("total-price").innerText = "Total Price: ₹" + totalPrice;
+            document.getElementById("book-now").disabled = !hasItems;
         }
 
+        // Validate phone number (10 digits)
+        function validatePhone(phone) {
+            return /^\d{10}$/.test(phone);
+        }
+
+        // Handle payment
         function payNow() {
-            let phone = document.getElementById("phone_number").value;
+            const phone = document.getElementById("phone_number").value;
+            const rollNumber = document.getElementById("Roll_number").value;
             let foodItems = [];
             let totalPrice = 0;
             
+            // Validate inputs
+            if (!rollNumber) {
+                document.getElementById("roll-error").innerText = "Roll number is required";
+                return;
+            } else {
+                document.getElementById("roll-error").innerText = "";
+            }
+            
+            if (!validatePhone(phone)) {
+                document.getElementById("phone-error").innerText = "Invalid phone number (10 digits required)";
+                return;
+            } else {
+                document.getElementById("phone-error").innerText = "";
+            }
+            
+            // Collect selected food items
             document.querySelectorAll(".food-item").forEach(item => {
                 let quantity = parseInt(item.querySelector(".quantity").innerText);
                 if (quantity > 0) {
@@ -90,31 +134,38 @@
                 }
             });
             
-            if (foodItems.length === 0) {
-                alert("Please select at least one item.");
-                return;
-            }
-            
-            let options = {
-                "key": "rzp_test_grC8eQKnPL68OR",
-                "amount": totalPrice * 100,
-                "currency": "INR",
-                "name": "Food Booking",
-                "description": "Payment for food booking",
-                "handler": function (response) {
-                    $.post("https://flask-api-hzo9.onrender.com", {
+            // Razorpay checkout
+            const options = {
+                key: "rzp_test_grC8eQKnPL68OR", // Replace with your Razorpay key
+                amount: totalPrice * 100, // Razorpay uses paise
+                currency: "INR",
+                name: "Food Dispenser",
+                description: "Food Booking Payment",
+                handler: function (response) {
+                    // Call Flask backend after payment
+                    $.post("https://flask-api-hzo9.onrender.com/book_food", {
                         phone_number: phone,
+                        roll_number: rollNumber,
                         food_items: foodItems,
-                        payment_id: response.razorpay_payment_id,
-                        total_price: totalPrice
-                    }, function(data) {
-                        document.getElementById("qr-code").style.display = "block";
-                        document.getElementById("qr-img").src = "data:image/png;base64," + data.qr_code;
+                        payment_id: response.razorpay_payment_id
+                    })
+                    .done(function(data) {
+                        if (data.qr_code) {
+                            document.getElementById("qr-code").style.display = "block";
+                            document.getElementById("qr-img").src = "data:image/png;base64," + data.qr_code;
+                        } else {
+                            alert("Error: No QR code received");
+                        }
+                    })
+                    .fail(function(error) {
+                        alert("Payment failed: " + error.responseJSON?.message || "Server error");
                     });
                 },
-                "prefill": { "contact": phone }
+                prefill: { contact: phone },
+                theme: { color: "#4CAF50" }
             };
-            let rzp = new Razorpay(options);
+            
+            const rzp = new Razorpay(options);
             rzp.open();
         }
     </script>
