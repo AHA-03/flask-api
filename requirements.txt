@@ -53,7 +53,6 @@ pypiwin32==223
 Pyrebase4==4.8.0
 python-dotenv==1.0.1
 python-jwt==4.1.0
-pywin32==306
 qrcode==8.0
 razorpay==1.4.2
 requests==2.31.0
