@@ -49,7 +49,6 @@ Pygments==2.17.2
 PyJWT==2.10.1
 pymongo==4.11.3
 pyparsing==3.2.1
-pypiwin32==223
 Pyrebase4==4.8.0
 python-dotenv==1.0.1
 python-jwt==4.1.0
